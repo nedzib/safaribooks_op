@@ -295,6 +295,7 @@ class SafariBooks:
     EPUB_CHAPTER_V2_TEMPLATE = SAFARI_BASE_URL + "/api/v2/epub-chapters/{0}/"
     EPUB_FILES_BASE_TEMPLATE = SAFARI_BASE_URL + "/api/v2/epubs/urn:orm:book:{0}/files"
     READER_PAGE_TEMPLATE = SAFARI_BASE_URL + "/library/view/-/{0}/preface01.html"
+    READER_PAGE_XHTML_TEMPLATE = SAFARI_BASE_URL + "/library/view/-/{0}/preface01.xhtml"
 
     BASE_01_HTML = (
         "<!DOCTYPE html>\n"
@@ -433,6 +434,7 @@ class SafariBooks:
         self.check_login()
 
         self.book_id = args.bookid
+        self.input_book_url = args.book_url.strip() if args.book_url else ""
         self.book_urn = "urn:orm:book:{0}".format(self.book_id)
         self.api_url = self.API_TEMPLATE.format(self.book_id)
         self.reader_toc = None
@@ -598,6 +600,47 @@ class SafariBooks:
         match = re.search(r"/(\d{10,14})(?:/|$)", book_url)
         return match.group(1) if match else None
 
+    @staticmethod
+    def strip_query_and_fragment(url):
+        parsed_url = urlparse(url)
+        return parsed_url._replace(query="", fragment="").geturl()
+
+    def get_reader_bootstrap_urls(self):
+        candidates = []
+        seen = set()
+
+        def add_candidate(url):
+            if not url:
+                return
+
+            clean_url = self.strip_query_and_fragment(url)
+            if clean_url in seen:
+                return
+
+            seen.add(clean_url)
+            candidates.append(clean_url)
+
+        add_candidate(self.input_book_url)
+
+        if self.input_book_url:
+            parsed_input = urlparse(self.input_book_url)
+            path = parsed_input.path
+
+            if re.search(r"/\d{10,14}/[^/]+\.(?:x?html)$", path):
+                base_path = path.rsplit("/", 1)[0] + "/"
+                add_candidate(parsed_input._replace(path=base_path).geturl())
+                add_candidate(
+                    parsed_input._replace(path=base_path + "preface01.html").geturl()
+                )
+                add_candidate(
+                    parsed_input._replace(path=base_path + "preface01.xhtml").geturl()
+                )
+
+        add_candidate(self.READER_PAGE_TEMPLATE.format(self.book_id))
+        add_candidate(self.READER_PAGE_XHTML_TEMPLATE.format(self.book_id))
+
+        return candidates
+
     def do_login(self, email, password):
         response = self.requests_provider(self.LOGIN_ENTRY_URL)
         if response == 0:
@@ -715,32 +758,30 @@ class SafariBooks:
         if self.reader_bootstrap is not None:
             return self.reader_bootstrap
 
-        response = self.requests_provider(
-            self.READER_PAGE_TEMPLATE.format(self.book_id)
+        attempted_urls = []
+
+        for bootstrap_url in self.get_reader_bootstrap_urls():
+            attempted_urls.append(bootstrap_url)
+            response = self.requests_provider(bootstrap_url)
+            if response == 0 or response.status_code != 200:
+                continue
+
+            self.reader_page_html = response.text
+            match = self.INITIAL_STORE_DATA_PATTERN.search(self.reader_page_html)
+            if not match:
+                continue
+
+            try:
+                self.reader_bootstrap = json.loads(match.group(1))
+                return self.reader_bootstrap
+            except json.JSONDecodeError:
+                continue
+
+        self.display.exit(
+            "Reader: unable to load initial page data for this title.\n"
+            "    Tried:\n"
+            "    - {0}".format("\n    - ".join(attempted_urls))
         )
-        if response == 0 or response.status_code != 200:
-            self.display.exit(
-                "Reader: unable to load reader bootstrap page for this title."
-            )
-
-        self.reader_page_html = response.text
-
-        match = self.INITIAL_STORE_DATA_PATTERN.search(self.reader_page_html)
-        if not match:
-            self.display.exit(
-                "Reader: unable to parse initial page data for this title."
-            )
-
-        try:
-            self.reader_bootstrap = json.loads(match.group(1))
-        except json.JSONDecodeError as exc:
-            self.display.exit(
-                "Reader: invalid initial page data format.\n    Details: {0}".format(
-                    exc
-                )
-            )
-
-        return self.reader_bootstrap
 
     def get_book_info_v2(self):
         self.display.info(
@@ -1657,6 +1698,13 @@ if __name__ == "__main__":
     )
 
     args_parsed = arguments.parse_args()
+
+    if args_parsed.bookid and not args_parsed.book_url:
+        parsed_book_id = SafariBooks.parse_book_id_from_url(args_parsed.bookid)
+        if parsed_book_id:
+            args_parsed.book_url = args_parsed.bookid
+            args_parsed.bookid = parsed_book_id
+
     if not args_parsed.bookid and args_parsed.book_url:
         parsed_book_id = SafariBooks.parse_book_id_from_url(args_parsed.book_url)
         if not parsed_book_id:
