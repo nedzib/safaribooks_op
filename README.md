@@ -9,8 +9,9 @@ Before any usage please read the *O'Reilly*'s [Terms of Service](https://learnin
 - This project is no longer actively maintained.  
 - *Login through `safaribooks` no longer works due to changes in ORLY APIs.*
 - *The program needs a major refactor to include new features and integrate new APIs.*
-- **However... it still work for downloading books.**  
-(Use SSO hack: log in via browser, then copy cookies into `cookies.json`, see below and issues. Love ❤️)
+- **However... it still works for downloading books using browser cookies.**  
+- `--cred` and `--login` are currently disabled (upstream API changes).
+- Use browser login + `cookies.json`, then run by `<BOOK ID>` or `--book-url`.
 
 ---
 
@@ -43,12 +44,15 @@ requests>=2.20.0
 ```
   
 ## Usage:
-It's really simple to use, just choose a book from the library and replace in the following command:
-  * X-es with its ID, 
-  * `email:password` with your own. 
+It's really simple to use:
+1. Log in to O'Reilly in your browser.
+2. Export/copy the session cookies into `cookies.json`.
+3. Run the downloader with a book ID or a full book URL.
 
 ```shell
-$ python3 safaribooks.py --cred "account_mail@mail.com:password01" XXXXXXXXXXXXX
+$ python3 safaribooks.py 9798341630055
+$ python3 safaribooks.py --book-url "https://learning.oreilly.com/library/view/creacion-de-productos/9798341630055/"
+$ python3 safaribooks.py --book-url "https://learning.oreilly.com/library/view/creacion-de-productos/9798341630055/preface01.html"
 ```
 
 The ID is the digits that you find in the URL of the book description page:  
@@ -60,7 +64,8 @@ Like: `https://www.safaribooksonline.com/library/view/test-driven-development-wi
 $ python3 safaribooks.py --help
 usage: safaribooks.py [--cred <EMAIL:PASS> | --login] [--no-cookies]
                       [--kindle] [--preserve-log] [--help]
-                      <BOOK ID>
+                      [--book-url BOOK_URL]
+                      [<BOOK ID>]
 
 Download and generate an EPUB of your favorite books from Safari Books Online.
 
@@ -84,14 +89,18 @@ optional arguments:
   --preserve-log       Leave the `info_XXXXXXXXXXXXX.log` file even if there
                        isn't any error.
   --help               Show this help message.
+  --book-url BOOK_URL  Book URL to download. Example:
+                       `https://learning.oreilly.com/library/view/book-
+                       name/XXXXXXXXXXXXX/`
 ```
-  
-The first time you use the program, you'll have to specify your Safari Books Online account credentials (look [`here`](/../../issues/15) for special character).  
-The next times you'll download a book, before session expires, you can omit the credential, because the program save your session cookies in a file called `cookies.json`.  
-For **SSO**, please use the `sso_cookies.py` program in order to create the `cookies.json` file from the SSO cookies retrieved by your browser session (please follow [`these steps`](/../../issues/150#issuecomment-555423085)).  
+
+`--cred` and `--login` are currently disabled because of ORLY auth/API changes.
+Use `cookies.json` generated from your browser session. For **SSO**, please use the `sso_cookies.py` program in order to create the `cookies.json` file from the SSO cookies retrieved by your browser session (please follow [`these steps`](/../../issues/150#issuecomment-555423085)).  
   
 Pay attention if you use a shared PC, because everyone that has access to your files can steal your session. 
 If you don't want to cache the cookies, just use the `--no-cookies` option and provide all time your credential through the `--cred` option or the more safe `--login` one: this will prompt you for credential during the script execution.
+
+> Note: with current auth changes, this flow is not available right now. Keep `cookies.json` updated from browser login when session expires.
 
 You can configure proxies by setting on your system the environment variable `HTTPS_PROXY` or using the `USE_PROXY` directive into the script.
 
@@ -111,7 +120,7 @@ In this case, I suggest you to convert the `EPUB` to `AZW3` with Calibre or to `
 ## Examples:
   * ## Download [Test-Driven Development with Python, 2nd Edition](https://www.safaribooksonline.com/library/view/test-driven-development-with/9781491958698/):  
     ```shell
-    $ python3 safaribooks.py --cred "my_email@gmail.com:MyPassword1!" 9781491958698
+    $ python3 safaribooks.py 9781491958698
 
            ____     ___         _ 
           / __/__ _/ _/__ _____(_)
